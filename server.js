@@ -1,4 +1,4 @@
-[11/04/2026 00:34] Ap: const express = require("express");
+const express = require("express");
 const multer = require("multer");
 const fs = require("fs");
 const OpenAI = require("openai");
@@ -306,7 +306,7 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
     saveMemory();
 
     res.
-[11/04/2026 00:34] Ap: setHeader("Content-Type", "text/plain; charset=utf-8");
+setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send(reply);
   } catch (err) {
     console.error(err);
