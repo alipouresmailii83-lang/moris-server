@@ -67,28 +67,25 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    // اگر برای این دستگاه حافظه نبود، بساز
     if (!memoryStore[deviceId]) {
       memoryStore[deviceId] = [];
     }
 
     let conversationHistory = memoryStore[deviceId];
 
-    // پیام کاربر
     conversationHistory.push({
       role: "user",
       content: text,
     });
 
-    // محدود کردن حافظه
     if (conversationHistory.length > MAX_HISTORY) {
       conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
 
     const messages = [
       {
-  role: "system",
-  content: `
+        role: "system",
+        content: `
 You are Moris, a premium AI voice assistant.
 
 Personality:
@@ -111,8 +108,8 @@ Style:
 Goal:
 Make the interaction feel like talking to a real intelligent assistant, not a machine.
 `
-}
-      ...conversationHistory,
+      },
+      ...conversationHistory
     ];
 
     const response = await openai.responses.create({
@@ -122,18 +119,15 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
 
     const reply = response.output_text || "";
 
-    // ذخیره جواب
     conversationHistory.push({
       role: "assistant",
       content: reply,
     });
 
-    // دوباره محدود
     if (conversationHistory.length > MAX_HISTORY) {
       conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
 
-    // ذخیره نهایی
     memoryStore[deviceId] = conversationHistory;
     saveMemory();
 
