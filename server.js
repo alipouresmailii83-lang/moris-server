@@ -13,8 +13,8 @@ const openai = new OpenAI({
 app.use(express.json());
 
 // ===== Telegram config =====
-const TELEGRAM_BOT_TOKEN = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
-const TELEGRAM_OWNER_CHAT_ID = "845841333";
+const TELEGRAM_BOT_TOKEN = "845841333";
+const TELEGRAM_OWNER_CHAT_ID = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
 const TELEGRAM_BOT_USERNAME = "MorisAgentBot";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
@@ -189,6 +189,72 @@ function findContactByNormalizedName(targetName) {
   };
 }
 
+async function detectMessageIntent(text, contactsMap) {
+  const contactNames = Object.values(contactsMap)
+    .map((c) => c.display_name)
+    .filter(Boolean);
+
+  const prompt = `
+You are an intent parser.
+
+Your job is to detect whether the user wants to send a Telegram message.
+
+Return ONLY valid JSON in one of these two formats:
+
+If the user wants to send a message:
+{"intent":"send_message","target_name":"NAME","message_text":"MESSAGE"}
+
+If the user does not want to send a message:
+{"intent":"normal_chat"}
+
+Rules:
+- The user may speak naturally in Persian.
+- If they want to send a message, extract the target person's name and the actual message text.
+- If target is "تلگرامم" or "خودم", set target_name to "خودم".
+- Known contacts: ${contactNames.join(", ") || "none"}
+- Do not explain anything.
+- Output JSON only.
+
+User text:
+${text}
+`;
+
+  const response = await openai.responses.create({
+    model: "gpt-4.1-mini",
+    input: prompt,
+  });
+
+  const raw = (response.output_text || "").trim();
+
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return { intent: "normal_chat" };
+  }
+}
+
+function findContactByDisplayName(targetName) {
+  const normalizedTarget = normalizeName(targetName);
+
+  if (normalizedTarget === "خودم") {
+    return {
+      savedName: "خودم",
+      data: {
+        chat_id: TELEGRAM_OWNER_CHAT_ID,
+        display_name: "خودم",
+      },
+    };
+  }
+
+  const found = contacts[normalizedTarget];
+  if (!found) return null;
+
+  return {
+    savedName: found.display_name || normalizedTarget,
+    data: found,
+  };
+}
+
 // ===== STT =====
 app.post("/stt", upload.single("audio"), async (req, res) => {
   try {
@@ -259,15 +325,23 @@ app.post("/chat", async (req, res) => {
       return res.send(`لینک اضافه کردن ${name} به تلگرامت فرستاده شد.`);
     }
 
-    const parsed = parseTelegramTarget(text);
-    if (parsed) {
-      const found = findContactByNormalizedName(parsed.targetName);
+    const intentResult = await detectMessageIntent(text, contacts);
 
-      if (!found) {
-        return res.send("مخاطب پیدا نشد.");
+    if (intentResult.intent === "send_message") {
+      const targetName = intentResult.target_name || "";
+      const messageText = intentResult.message_text || "";
+
+      if (!targetName || !messageText) {
+        return res.send("متوجه پیام نشدم.");
       }
 
-      await sendTelegramMessage(found.data.chat_id, parsed.messageText);
+      const found = findContactByDisplayName(targetName);
+
+      if (!found) {
+        return res.send(`مخاطب ${targetName} پیدا نشد.`);
+      }
+
+      await sendTelegramMessage(found.data.chat_id, messageText);
       return res.send(`پیام برای ${found.savedName} فرستاده شد.`);
     }
 
@@ -307,9 +381,9 @@ Style:
 
 Goal:
 Make the interaction feel like talking to a real intelligent assistant, not a machine.
-`
+`,
       },
-      ...history
+      ...history,
     ];
 
     const response = await openai.responses.create({
