@@ -12,11 +12,17 @@ const openai = new OpenAI({
 
 app.use(express.json());
 
-// STT
+// حافظه مکالمه
+let conversationHistory = [];
+
+// تعداد پیام‌هایی که نگه می‌داریم
+const MAX_HISTORY = 8;
+
+// ===================== STT =====================
 app.post("/stt", upload.single("audio"), async (req, res) => {
   try {
     const filePath = req.file.path;
-    const debugPath = `uploads/debug-${Date.now()}.wav`;
+    const debugPath = uploads/debug-${Date.now()}.wav;
 
     fs.copyFileSync(filePath, debugPath);
 
@@ -38,7 +44,7 @@ app.post("/stt", upload.single("audio"), async (req, res) => {
   }
 });
 
-// CHAT
+// ===================== CHAT WITH MEMORY =====================
 app.post("/chat", async (req, res) => {
   try {
     const text = req.body?.text || "";
@@ -47,12 +53,44 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
+    // پیام جدید کاربر را به حافظه اضافه کن
+    conversationHistory.push({
+      role: "user",
+      content: text,
+    });
+
+    // فقط چند پیام آخر را نگه دار
+    if (conversationHistory.length > MAX_HISTORY) {
+      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    }
+
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are Moris, a calm and premium AI assistant. Keep context of the conversation, answer naturally, and ask follow-up questions when appropriate. Keep responses concise and clear.",
+      },
+      ...conversationHistory,
+    ];
+
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: `You are Moris, a calm and premium AI assistant. Answer briefly.\nUser: ${text}`,
+      input: messages,
     });
 
     const reply = response.output_text || "";
+
+    // جواب Moris را هم داخل حافظه نگه دار
+    conversationHistory.push({
+      role: "assistant",
+      content: reply,
+    });
+
+    // دوباره محدودش کن
+    if (conversationHistory.length > MAX_HISTORY) {
+      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    }
+
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send(reply);
   } catch (err) {
@@ -61,7 +99,7 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// TTS
+// ===================== TTS =====================
 app.post("/tts", async (req, res) => {
   try {
     const text = req.body?.text || "";
@@ -88,6 +126,14 @@ app.post("/tts", async (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log("Moris AI server running on http://localhost:3000");
+// ===================== OPTIONAL RESET MEMORY =====================
+app.post("/reset-memory", (req, res) => {
+  conversationHistory = [];
+  res.json({ ok: true });
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
 });
