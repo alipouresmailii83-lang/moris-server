@@ -22,7 +22,7 @@ const MAX_HISTORY = 8;
 app.post("/stt", upload.single("audio"), async (req, res) => {
   try {
     const filePath = req.file.path;
-    const debugPath = uploads/debug-${Date.now()}.wav;
+    const debugPath = `uploads/debug-${Date.now()}.wav`;
 
     fs.copyFileSync(filePath, debugPath);
 
