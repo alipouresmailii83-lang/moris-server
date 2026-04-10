@@ -13,7 +13,7 @@ const openai = new OpenAI({
 app.use(express.json());
 
 // ===================== Telegram =====================
-const TELEGRAM_BOT_TOKEN = "توکن_جدید_ربات";
+const TELEGRAM_BOT_TOKEN = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
 const TELEGRAM_CHAT_ID = "845841333";
 
 async function sendTelegramMessage(text) {
