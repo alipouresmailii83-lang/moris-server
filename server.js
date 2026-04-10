@@ -51,11 +51,18 @@ async function sendTelegramMessage(chatId, text) {
 }
 
 function normalizeName(name) {
-  return String(name || "").trim().toLowerCase();
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\u200c/g, "")
+    .replace(/ي/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\s+/g, " ");
 }
 
 function buildContactLink(name) {
-  const safe = normalizeName(name).replace(/\s+/g, "_");
+  const normalized = normalizeName(name);
+  const safe = normalized.replace(/\s+/g, "_");
   return `https://t.me/${TELEGRAM_BOT_USERNAME}?start=add_${safe}`;
 }
 
@@ -71,7 +78,6 @@ async function processTelegramUpdates() {
       telegramOffset = update.update_id + 1;
 
       const msg = update.message;
-
       if (!msg || !msg.text || !msg.chat) continue;
 
       const text = msg.text.trim();
@@ -84,10 +90,12 @@ async function processTelegramUpdates() {
         const payload = parts[1] || "";
 
         if (payload.startsWith("add_")) {
-          const contactName = payload.replace("add_", "").replace(/_/g, " ").trim();
+          const rawContactName = payload.replace("add_", "").replace(/_/g, " ").trim();
+          const normalizedContactName = normalizeName(rawContactName);
 
-          if (contactName) {
-            contacts[contactName] = {
+          if (normalizedContactName) {
+            contacts[normalizedContactName] = {
+              display_name: rawContactName,
               chat_id: chatId,
               username,
               first_name: firstName,
@@ -96,7 +104,7 @@ async function processTelegramUpdates() {
 
             await sendTelegramMessage(
               chatId,
-              `ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم "${contactName}" بهت پیام بده.`
+              `ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم "${rawContactName}" بهت پیام بده.`
             );
           }
         }
@@ -150,12 +158,15 @@ function parseTelegramTarget(text) {
 }
 
 function findContactByNormalizedName(targetName) {
-  for (const key of Object.keys(contacts)) {
-    if (normalizeName(key) === targetName) {
-      return { savedName: key, data: contacts[key] };
-    }
-  }
-  return null;
+  const normalizedTarget = normalizeName(targetName);
+  const found = contacts[normalizedTarget];
+
+  if (!found) return null;
+
+  return {
+    savedName: found.display_name || normalizedTarget,
+    data: found,
+  };
 }
 
 // ===== STT =====
@@ -202,21 +213,21 @@ app.post("/chat", async (req, res) => {
     }
 
     if (text.startsWith("لینک اضافه کردن")) {
-  const name = text.replace("لینک اضافه کردن", "").trim();
+      const name = text.replace("لینک اضافه کردن", "").trim();
 
-  if (!name) {
-    return res.send("اسم مخاطب رو نگفتی.");
-  }
+      if (!name) {
+        return res.send("اسم مخاطب رو نگفتی.");
+      }
 
-  const link = buildContactLink(name);
+      const link = buildContactLink(name);
 
-  await sendTelegramMessage(
-    TELEGRAM_OWNER_CHAT_ID,
-    `لینک اضافه کردن ${name}:\n${link}`
-  );
+      await sendTelegramMessage(
+        TELEGRAM_OWNER_CHAT_ID,
+        `لینک اضافه کردن ${name}:\n${link}`
+      );
 
-  return res.send(`لینک اضافه کردن ${name} به تلگرامت فرستاده شد.`);
-}
+      return res.send(`لینک اضافه کردن ${name} به تلگرامت فرستاده شد.`);
+    }
 
     const parsed = parseTelegramTarget(text);
     if (parsed) {
@@ -242,9 +253,38 @@ app.post("/chat", async (req, res) => {
       history = history.slice(-MAX_HISTORY);
     }
 
+    const messages = [
+      {
+        role: "system",
+        content: `
+You are Moris, a premium AI voice assistant.
+
+Personality:
+- Calm, confident, and slightly charismatic
+- Friendly but not overly casual
+- Speaks naturally like a human, not robotic
+
+Behavior:
+- Always remember conversation context
+- Sometimes ask a short follow-up question when appropriate
+- If the user answers your question, connect it to your previous message
+- Show interest in the user
+
+Style:
+- Speak smoothly and naturally
+- Avoid long explanations
+- Keep a premium, modern tone
+
+Goal:
+Make the interaction feel like talking to a real intelligent assistant, not a machine.
+`
+      },
+      ...history
+    ];
+
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: history,
+      input: messages,
     });
 
     const reply = response.output_text || "";
@@ -285,6 +325,26 @@ app.post("/tts", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send("TTS error");
+  }
+});
+
+// ===== Debug routes =====
+app.get("/contacts", (req, res) => {
+  res.json(contacts);
+});
+
+app.post("/telegram-test", async (req, res) => {
+  try {
+    const text = req.body?.text || "سلام از طرف Moris";
+    const result = await sendTelegramMessage(TELEGRAM_OWNER_CHAT_ID, text);
+
+    res.json({
+      ok: true,
+      telegram: result,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Telegram send failed" });
   }
 });
 
