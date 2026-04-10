@@ -6,6 +6,18 @@ const OpenAI = require("openai");
 const app = express();
 const upload = multer({ dest: "uploads/" });
 
+const MEMORY_FILE = "memory.json";
+
+// لود حافظه
+if (fs.existsSync(MEMORY_FILE)) {
+  memoryStore = JSON.parse(fs.readFileSync(MEMORY_FILE));
+}
+
+// ذخیره حافظه
+function saveMemory() {
+  fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -13,10 +25,11 @@ const openai = new OpenAI({
 app.use(express.json());
 
 // حافظه مکالمه
-let conversationHistory = [];
+let memoryStore = {};
+
 
 // تعداد پیام‌هایی که نگه می‌داریم
-const MAX_HISTORY = 8;
+const MAX_HISTORY = 10;
 
 // ===================== STT =====================
 app.post("/stt", upload.single("audio"), async (req, res) => {
@@ -48,18 +61,26 @@ app.post("/stt", upload.single("audio"), async (req, res) => {
 app.post("/chat", async (req, res) => {
   try {
     const text = req.body?.text || "";
+    const deviceId = req.body?.device_id || "default";
 
     if (!text) {
       return res.status(400).send("Missing text");
     }
 
-    // پیام جدید کاربر را به حافظه اضافه کن
+    // اگر برای این دستگاه حافظه نبود، بساز
+    if (!memoryStore[deviceId]) {
+      memoryStore[deviceId] = [];
+    }
+
+    let conversationHistory = memoryStore[deviceId];
+
+    // پیام کاربر
     conversationHistory.push({
       role: "user",
       content: text,
     });
 
-    // فقط چند پیام آخر را نگه دار
+    // محدود کردن حافظه
     if (conversationHistory.length > MAX_HISTORY) {
       conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
@@ -68,7 +89,7 @@ app.post("/chat", async (req, res) => {
       {
         role: "system",
         content:
-          "You are Moris, a calm and premium AI assistant. Keep context of the conversation, answer naturally, and ask follow-up questions when appropriate. Keep responses concise and clear.",
+          "You are Moris, a premium AI assistant. Remember context, talk naturally, and keep responses short and smart.",
       },
       ...conversationHistory,
     ];
@@ -80,16 +101,20 @@ app.post("/chat", async (req, res) => {
 
     const reply = response.output_text || "";
 
-    // جواب Moris را هم داخل حافظه نگه دار
+    // ذخیره جواب
     conversationHistory.push({
       role: "assistant",
       content: reply,
     });
 
-    // دوباره محدودش کن
+    // دوباره محدود
     if (conversationHistory.length > MAX_HISTORY) {
       conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
+
+    // ذخیره نهایی
+    memoryStore[deviceId] = conversationHistory;
+    saveMemory();
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send(reply);
