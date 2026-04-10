@@ -19,8 +19,10 @@ const TELEGRAM_BOT_USERNAME = "MorisAgentBot";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const CONTACTS_FILE = "contacts.json";
+const PENDING_LINKS_FILE = "pending_links.json";
 
 let contacts = {};
+let pendingLinks = {};
 let telegramOffset = 0;
 
 if (fs.existsSync(CONTACTS_FILE)) {
@@ -31,8 +33,20 @@ if (fs.existsSync(CONTACTS_FILE)) {
   }
 }
 
+if (fs.existsSync(PENDING_LINKS_FILE)) {
+  try {
+    pendingLinks = JSON.parse(fs.readFileSync(PENDING_LINKS_FILE, "utf8"));
+  } catch (e) {
+    pendingLinks = {};
+  }
+}
+
 function saveContacts() {
   fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2));
+}
+
+function savePendingLinks() {
+  fs.writeFileSync(PENDING_LINKS_FILE, JSON.stringify(pendingLinks, null, 2));
 }
 
 async function sendTelegramMessage(chatId, text) {
@@ -60,10 +74,12 @@ function normalizeName(name) {
     .replace(/\s+/g, " ");
 }
 
-function buildContactLink(name) {
-  const normalized = normalizeName(name);
-  const safe = normalized.replace(/\s+/g, "_");
-  return `https://t.me/${TELEGRAM_BOT_USERNAME}?start=add_${safe}`;
+function makeInviteCode() {
+  return `c_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+}
+
+function buildContactLink(code) {
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?start=add_${code}`;
 }
 
 async function processTelegramUpdates() {
@@ -90,21 +106,25 @@ async function processTelegramUpdates() {
         const payload = parts[1] || "";
 
         if (payload.startsWith("add_")) {
-          const rawContactName = payload.replace("add_", "").replace(/_/g, " ").trim();
-          const normalizedContactName = normalizeName(rawContactName);
+          const code = payload.replace("add_", "").trim();
+          const pending = pendingLinks[code];
 
-          if (normalizedContactName) {
-            contacts[normalizedContactName] = {
-              display_name: rawContactName,
+          if (pending && pending.display_name && pending.normalized_name) {
+            contacts[pending.normalized_name] = {
+              display_name: pending.display_name,
               chat_id: chatId,
               username,
               first_name: firstName,
             };
+
+            delete pendingLinks[code];
+
             saveContacts();
+            savePendingLinks();
 
             await sendTelegramMessage(
               chatId,
-              `ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم "${rawContactName}" بهت پیام بده.`
+              `ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم "${pending.display_name}" بهت پیام بده.`
             );
           }
         }
@@ -219,7 +239,17 @@ app.post("/chat", async (req, res) => {
         return res.send("اسم مخاطب رو نگفتی.");
       }
 
-      const link = buildContactLink(name);
+      const code = makeInviteCode();
+      const normalized = normalizeName(name);
+
+      pendingLinks[code] = {
+        display_name: name,
+        normalized_name: normalized,
+        created_at: Date.now(),
+      };
+      savePendingLinks();
+
+      const link = buildContactLink(code);
 
       await sendTelegramMessage(
         TELEGRAM_OWNER_CHAT_ID,
@@ -290,7 +320,6 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
     const reply = response.output_text || "";
 
     history.push({ role: "assistant", content: reply });
-
     memoryStore[deviceId].history = history;
     saveMemory();
 
@@ -331,6 +360,10 @@ app.post("/tts", async (req, res) => {
 // ===== Debug routes =====
 app.get("/contacts", (req, res) => {
   res.json(contacts);
+});
+
+app.get("/pending-links", (req, res) => {
+  res.json(pendingLinks);
 });
 
 app.post("/telegram-test", async (req, res) => {
