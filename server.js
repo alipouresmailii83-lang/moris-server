@@ -6,30 +6,48 @@ const OpenAI = require("openai");
 const app = express();
 const upload = multer({ dest: "uploads/" });
 
-const MEMORY_FILE = "memory.json";
-
-// لود حافظه
-if (fs.existsSync(MEMORY_FILE)) {
-  memoryStore = JSON.parse(fs.readFileSync(MEMORY_FILE));
-}
-
-// ذخیره حافظه
-function saveMemory() {
-  fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
-}
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 app.use(express.json());
 
-// حافظه مکالمه
+// ===================== Telegram =====================
+const TELEGRAM_BOT_TOKEN = "توکن_جدید_ربات";
+const TELEGRAM_CHAT_ID = "845841333";
+
+async function sendTelegramMessage(text) {
+  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      chat_id: TELEGRAM_CHAT_ID,
+      text: text,
+    }),
+  });
+
+  return await response.json();
+}
+
+// ===================== Memory =====================
 let memoryStore = {};
+const MAX_HISTORY = 8;
+const MEMORY_FILE = "memory.json";
 
+if (fs.existsSync(MEMORY_FILE)) {
+  try {
+    memoryStore = JSON.parse(fs.readFileSync(MEMORY_FILE, "utf8"));
+  } catch (e) {
+    console.error("Failed to load memory.json", e);
+    memoryStore = {};
+  }
+}
 
-// تعداد پیام‌هایی که نگه می‌داریم
-const MAX_HISTORY = 10;
+function saveMemory() {
+  fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
+}
 
 // ===================== STT =====================
 app.post("/stt", upload.single("audio"), async (req, res) => {
@@ -49,6 +67,7 @@ app.post("/stt", upload.single("audio"), async (req, res) => {
     res.json({ text: transcription.text || "" });
   } catch (err) {
     console.error(err);
+
     let msg = "STT error";
     if (err && err.error && err.error.message) msg = err.error.message;
     else if (err && err.message) msg = err.message;
@@ -57,7 +76,7 @@ app.post("/stt", upload.single("audio"), async (req, res) => {
   }
 });
 
-// ===================== CHAT WITH MEMORY =====================
+// ===================== CHAT =====================
 app.post("/chat", async (req, res) => {
   try {
     const text = req.body?.text || "";
@@ -67,17 +86,34 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    if (!memoryStore[deviceId]) {
-      memoryStore[deviceId] = [];
+    // اگر کاربر گفت به تلگرامم بگو...
+    if (text.startsWith("به تلگرامم بگو")) {
+      const msg = text.replace("به تلگرامم بگو", "").trim();
+
+      if (!msg) {
+        return res.send("متن پیام رو نگفتی.");
+      }
+
+      await sendTelegramMessage(msg);
+      return res.send("پیام به تلگرامت فرستاده شد.");
     }
 
-    let conversationHistory = memoryStore[deviceId];
+    // اگر برای این دستگاه حافظه نبود، بساز
+    if (!memoryStore[deviceId]) {
+      memoryStore[deviceId] = {
+        history: [],
+      };
+    }
 
+    let conversationHistory = memoryStore[deviceId].history || [];
+
+    // پیام جدید کاربر
     conversationHistory.push({
       role: "user",
       content: text,
     });
 
+    // محدود کردن history
     if (conversationHistory.length > MAX_HISTORY) {
       conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
@@ -92,11 +128,10 @@ Personality:
 - Calm, confident, and slightly charismatic
 - Friendly but not overly casual
 - Speaks naturally like a human, not robotic
-- Keeps responses short and clear
 
 Behavior:
 - Always remember conversation context
-- Sometimes ask follow-up questions to continue the conversation
+- Sometimes ask a short follow-up question when appropriate
 - If the user answers your question, connect it to your previous message
 - Show interest in the user
 
@@ -119,16 +154,16 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
 
     const reply = response.output_text || "";
 
+    // ذخیره جواب Moris
     conversationHistory.push({
       role: "assistant",
       content: reply,
     });
 
-    if (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    if (conversationHistory.length > MAX_HISTORY) {conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
 
-    memoryStore[deviceId] = conversationHistory;
+    memoryStore[deviceId].history = conversationHistory;
     saveMemory();
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -166,9 +201,27 @@ app.post("/tts", async (req, res) => {
   }
 });
 
-// ===================== OPTIONAL RESET MEMORY =====================
+// ===================== Telegram Test =====================
+app.post("/telegram-test", async (req, res) => {
+  try {
+    const text = req.body?.text || "سلام از طرف Moris";
+
+    const result = await sendTelegramMessage(text);
+
+    res.json({
+      ok: true,
+      telegram: result,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Telegram send failed" });
+  }
+});
+
+// ===================== Reset Memory =====================
 app.post("/reset-memory", (req, res) => {
-  conversationHistory = [];
+  memoryStore = {};
+  saveMemory();
   res.json({ ok: true });
 });
 
