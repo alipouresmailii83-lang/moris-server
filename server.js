@@ -13,8 +13,8 @@ const openai = new OpenAI({
 app.use(express.json());
 
 // ===== Telegram config =====
-const TELEGRAM_BOT_TOKEN = "845841333";
-const TELEGRAM_OWNER_CHAT_ID = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
+const TELEGRAM_BOT_TOKEN = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
+const TELEGRAM_OWNER_CHAT_ID = "845841333";
 const TELEGRAM_BOT_USERNAME = "MorisAgentBot";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
