@@ -14,13 +14,13 @@ app.use(express.json());
 
 // ===== Telegram config =====
 const TELEGRAM_BOT_TOKEN = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
-const TELEGRAM_OWNER_CHAT_ID = "845841333";
 const TELEGRAM_BOT_USERNAME = "MorisAgentBot";
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const CONTACTS_FILE = "contacts.json";
 const PENDING_LINKS_FILE = "pending_links.json";
 
+// ===== Telegram state =====
 let contacts = {};
 let pendingLinks = {};
 let telegramOffset = 0;
@@ -105,6 +105,26 @@ async function processTelegramUpdates() {
         const parts = text.split(" ");
         const payload = parts[1] || "";
 
+        // Register owner automatically when user just sends /start
+        if (!payload) {
+          contacts["owner"] = {
+            display_name: "خودم",
+            chat_id: chatId,
+            username,
+            first_name: firstName,
+          };
+
+          saveContacts();
+
+          await sendTelegramMessage(
+            chatId,
+            "به عنوان صاحب دستگاه ثبت شدی ✅"
+          );
+
+          continue;
+        }
+
+        // Register contact from invite link
         if (payload.startsWith("add_")) {
           const code = payload.replace("add_", "").trim();
           const pending = pendingLinks[code];
@@ -154,33 +174,21 @@ function saveMemory() {
   fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
 }
 
-// ===== Helpers =====
-function parseTelegramTarget(text) {
-  const cleaned = text.trim();
-
-  if (!cleaned.startsWith("به ")) return null;
-  if (!cleaned.includes(" بگو ")) return null;
-
-  const withoutBe = cleaned.substring(2);
-  const splitIndex = withoutBe.indexOf(" بگو ");
-
-  if (splitIndex < 0) return null;
-
-  const targetName = withoutBe.substring(0, splitIndex).trim();
-  const messageText = withoutBe.substring(splitIndex + 5).trim();
-
-  if (!targetName || !messageText) return null;
-
-  return {
-    targetName: normalizeName(targetName),
-    messageText,
-  };
-}
-
-function findContactByNormalizedName(targetName) {
+// ===== Helper functions =====
+function findContactByDisplayName(targetName) {
   const normalizedTarget = normalizeName(targetName);
-  const found = contacts[normalizedTarget];
 
+  if (normalizedTarget === "خودم" || normalizedTarget === "تلگرامم") {
+    const owner = contacts["owner"];
+    if (!owner) return null;
+
+    return {
+      savedName: "خودم",
+      data: owner,
+    };
+  }
+
+  const found = contacts[normalizedTarget];
   if (!found) return null;
 
   return {
@@ -233,28 +241,6 @@ ${text}
   }
 }
 
-function findContactByDisplayName(targetName) {
-  const normalizedTarget = normalizeName(targetName);
-
-  if (normalizedTarget === "خودم") {
-    return {
-      savedName: "خودم",
-      data: {
-        chat_id: TELEGRAM_OWNER_CHAT_ID,
-        display_name: "خودم",
-      },
-    };
-  }
-
-  const found = contacts[normalizedTarget];
-  if (!found) return null;
-
-  return {
-    savedName: found.display_name || normalizedTarget,
-    data: found,
-  };
-}
-
 // ===== STT =====
 app.post("/stt", upload.single("audio"), async (req, res) => {
   try {
@@ -287,22 +273,17 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    if (text.startsWith("به تلگرامم بگو")) {
-      const msg = text.replace("به تلگرامم بگو", "").trim();
-
-      if (!msg) {
-        return res.send("متن پیام رو نگفتی.");
-      }
-
-      await sendTelegramMessage(TELEGRAM_OWNER_CHAT_ID, msg);
-      return res.send("پیام به تلگرامت فرستاده شد.");
-    }
-
+    // Create invite link for a contact and send it to owner on Telegram
     if (text.startsWith("لینک اضافه کردن")) {
       const name = text.replace("لینک اضافه کردن", "").trim();
 
       if (!name) {
         return res.send("اسم مخاطب رو نگفتی.");
+      }
+
+      const owner = contacts["owner"];
+      if (!owner) {
+        return res.send("اول خودت توی ربات /start بزن تا به عنوان صاحب دستگاه ثبت بشی.");
       }
 
       const code = makeInviteCode();
@@ -318,13 +299,14 @@ app.post("/chat", async (req, res) => {
       const link = buildContactLink(code);
 
       await sendTelegramMessage(
-        TELEGRAM_OWNER_CHAT_ID,
+        owner.chat_id,
         `لینک اضافه کردن ${name}:\n${link}`
       );
 
       return res.send(`لینک اضافه کردن ${name} به تلگرامت فرستاده شد.`);
     }
 
+    // Smart Telegram message detection
     const intentResult = await detectMessageIntent(text, contacts);
 
     if (intentResult.intent === "send_message") {
@@ -345,6 +327,7 @@ app.post("/chat", async (req, res) => {
       return res.send(`پیام برای ${found.savedName} فرستاده شد.`);
     }
 
+    // Normal conversation memory
     if (!memoryStore[deviceId]) {
       memoryStore[deviceId] = { history: [] };
     }
@@ -442,8 +425,13 @@ app.get("/pending-links", (req, res) => {
 
 app.post("/telegram-test", async (req, res) => {
   try {
+    const owner = contacts["owner"];
+    if (!owner) {
+      return res.status(400).json({ ok: false, error: "Owner not registered" });
+    }
+
     const text = req.body?.text || "سلام از طرف Moris";
-    const result = await sendTelegramMessage(TELEGRAM_OWNER_CHAT_ID, text);
+    const result = await sendTelegramMessage(owner.chat_id, text);
 
     res.json({
       ok: true,
