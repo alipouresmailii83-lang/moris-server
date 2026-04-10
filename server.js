@@ -202,15 +202,21 @@ app.post("/chat", async (req, res) => {
     }
 
     if (text.startsWith("لینک اضافه کردن")) {
-      const name = text.replace("لینک اضافه کردن", "").trim();
+  const name = text.replace("لینک اضافه کردن", "").trim();
 
-      if (!name) {
-        return res.send("اسم مخاطب رو نگفتی.");
-      }
+  if (!name) {
+    return res.send("اسم مخاطب رو نگفتی.");
+  }
 
-      const link = buildContactLink(name);
-      return res.send(`این لینک رو برای ${name} بفرست: ${link}`);
-    }
+  const link = buildContactLink(name);
+
+  await sendTelegramMessage(
+    TELEGRAM_OWNER_CHAT_ID,
+    `لینک اضافه کردن ${name}:\n${link}`
+  );
+
+  return res.send(`لینک اضافه کردن ${name} به تلگرامت فرستاده شد.`);
+}
 
     const parsed = parseTelegramTarget(text);
     if (parsed) {
