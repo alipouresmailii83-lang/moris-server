@@ -1,4 +1,4 @@
-const express = require("express");
+[11/04/2026 00:34] Ap: const express = require("express");
 const multer = require("multer");
 const fs = require("fs");
 const OpenAI = require("openai");
@@ -14,22 +14,107 @@ app.use(express.json());
 
 // ===================== Telegram =====================
 const TELEGRAM_BOT_TOKEN = "8351185413:AAGTSaKyEt2W-PfYHyIUB5_8KkZgy5dMlBc";
-const TELEGRAM_CHAT_ID = "845841333";
+const TELEGRAM_OWNER_CHAT_ID = "845841333"; // chat id خودت
+const TELEGRAM_BOT_USERNAME = "MorisAgentBot"; // بدون @
 
-async function sendTelegramMessage(text) {
-  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const CONTACTS_FILE = "contacts.json";
+
+// مخاطب‌ها اینجا ذخیره می‌شن:
+// {
+//   "علی": { "chat_id": "123456", "username": "aliuser", "first_name": "Ali" }
+// }
+let contacts = {};
+let telegramOffset = 0;
+
+if (fs.existsSync(CONTACTS_FILE)) {
+  try {
+    contacts = JSON.parse(fs.readFileSync(CONTACTS_FILE, "utf8"));
+  } catch (e) {
+    console.error("Failed to load contacts.json", e);
+    contacts = {};
+  }
+}
+
+function saveContacts() {
+  fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2));
+}
+
+async function sendTelegramMessage(chatId, text) {
+  const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
+      chat_id: chatId,
       text: text,
     }),
   });
 
   return await response.json();
 }
+
+function normalizeName(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function buildContactLink(name) {
+  const safe = normalizeName(name).replace(/\s+/g, "_");
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?start=add_${safe}`;
+}
+
+async function processTelegramUpdates() {
+  try {
+    const url = `${TELEGRAM_API}/getUpdates?offset=${telegramOffset}&limit=20&timeout=0`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.ok || !Array.isArray(data.result)) return;
+
+    for (const update of data.result) {
+      telegramOffset = update.update_id + 1;
+
+      const msg = update.message;
+      if (!msg  !msg.text  !msg.chat) continue;
+
+      const text = msg.text.trim();
+      const chatId = String(msg.chat.id);
+      const firstName = msg.from?.first_name || "";
+      const username = msg.from?.username || "";
+
+      // ثبت مخاطب از روی deep link:
+      // /start add_ali
+      if (text.startsWith("/start")) {
+        const parts = text.split(" ");
+        const payload = parts[1] || "";
+
+        if (payload.startsWith("add_")) {
+          const contactName = payload.replace("add_", "").replace(/_/g, " ").trim();
+
+          if (contactName) {
+            contacts[contactName] = {
+              chat_id: chatId,
+              username,
+              first_name: firstName,
+            };
+            saveContacts();
+
+            await sendTelegramMessage(
+              chatId,
+             ` ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم «${contactName}» بهت پیام بده.`
+            );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Telegram polling error:", err.message);
+  }
+}
+
+// هر 3 ثانیه آپدیت‌ها را چک کن
+setInterval(processTelegramUpdates, 3000);
 
 // ===================== Memory =====================
 let memoryStore = {};
@@ -47,6 +132,37 @@ if (fs.existsSync(MEMORY_FILE)) {
 
 function saveMemory() {
   fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
+}
+
+// ===================== Helpers =====================
+function parseTelegramTarget(text) {
+  const cleaned = text.trim();
+
+  if (!cleaned.startsWith("به ")) return null;
+  if (!cleaned.includes(" بگو ")) return null;
+
+  const withoutBe = cleaned.substring(2);
+  const splitIndex = withoutBe.indexOf(" بگو ");
+
+  if (splitIndex < 0) return null;
+
+  const targetName = withoutBe.substring(0, splitIndex).trim();
+  const messageText = withoutBe.substring(splitIndex + 5).trim();
+[11/04/2026 00:34] Ap: if (!targetName || !messageText) return null;
+
+  return {
+    targetName: normalizeName(targetName),
+    messageText,
+  };
+}
+
+function findContactByNormalizedName(targetName) {
+  for (const key of Object.keys(contacts)) {
+    if (normalizeName(key) === targetName) {
+      return { savedName: key, data: contacts[key] };
+    }
+  }
+  return null;
 }
 
 // ===================== STT =====================
@@ -86,7 +202,7 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    // اگر کاربر گفت به تلگرامم بگو...
+    // پیام به تلگرام خودم
     if (text.startsWith("به تلگرامم بگو")) {
       const msg = text.replace("به تلگرامم بگو", "").trim();
 
@@ -94,11 +210,36 @@ app.post("/chat", async (req, res) => {
         return res.send("متن پیام رو نگفتی.");
       }
 
-      await sendTelegramMessage(msg);
+      await sendTelegramMessage(TELEGRAM_OWNER_CHAT_ID, msg);
       return res.send("پیام به تلگرامت فرستاده شد.");
     }
 
-    // اگر برای این دستگاه حافظه نبود، بساز
+    // لینک اضافه کردن مخاطب
+    if (text.startsWith("لینک اضافه کردن")) {
+      const name = text.replace("لینک اضافه کردن", "").trim();
+
+      if (!name) {
+        return res.send("اسم مخاطب رو نگفتی.");
+      }
+
+      const link = buildContactLink(name);
+      return res.send(`این لینک رو برای ${name} بفرست: ${link}`);
+    }
+
+    // پیام به مخاطب ثبت‌شده
+    const parsed = parseTelegramTarget(text);
+    if (parsed) {
+      const found = findContactByNormalizedName(parsed.targetName);
+
+      if (!found) {
+        return res.send(`مخاطب ${parsed.targetName} رو پیدا نکردم. اول لینک اضافه کردنش رو بگیر و براش بفرست.`);
+      }
+
+      await sendTelegramMessage(found.data.chat_id, parsed.messageText);
+      return res.send(`پیام برای ${found.savedName} فرستاده شد.`);
+    }
+
+    // ====== حافظه مکالمه ======
     if (!memoryStore[deviceId]) {
       memoryStore[deviceId] = {
         history: [],
@@ -107,13 +248,11 @@ app.post("/chat", async (req, res) => {
 
     let conversationHistory = memoryStore[deviceId].history || [];
 
-    // پیام جدید کاربر
     conversationHistory.push({
       role: "user",
       content: text,
     });
 
-    // محدود کردن history
     if (conversationHistory.length > MAX_HISTORY) {
       conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
@@ -154,19 +293,20 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
 
     const reply = response.output_text || "";
 
-    // ذخیره جواب Moris
     conversationHistory.push({
       role: "assistant",
       content: reply,
     });
 
-    if (conversationHistory.length > MAX_HISTORY) {conversationHistory = conversationHistory.slice(-MAX_HISTORY);
+    if (conversationHistory.length > MAX_HISTORY) {
+      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
     }
 
     memoryStore[deviceId].history = conversationHistory;
     saveMemory();
 
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.
+[11/04/2026 00:34] Ap: setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send(reply);
   } catch (err) {
     console.error(err);
@@ -201,12 +341,15 @@ app.post("/tts", async (req, res) => {
   }
 });
 
-// ===================== Telegram Test =====================
+// ===================== Useful Routes =====================
+app.get("/contacts", (req, res) => {
+  res.json(contacts);
+});
+
 app.post("/telegram-test", async (req, res) => {
   try {
     const text = req.body?.text || "سلام از طرف Moris";
-
-    const result = await sendTelegramMessage(text);
+    const result = await sendTelegramMessage(TELEGRAM_OWNER_CHAT_ID, text);
 
     res.json({
       ok: true,
@@ -218,7 +361,6 @@ app.post("/telegram-test", async (req, res) => {
   }
 });
 
-// ===================== Reset Memory =====================
 app.post("/reset-memory", (req, res) => {
   memoryStore = {};
   saveMemory();
