@@ -82,6 +82,15 @@ function buildContactLink(code) {
   return `https://t.me/${TELEGRAM_BOT_USERNAME}?start=add_${code}`;
 }
 
+function findContactNameByChatId(chatId) {
+  for (const key of Object.keys(contacts)) {
+    if (String(contacts[key].chat_id) === String(chatId)) {
+      return contacts[key].display_name || key;
+    }
+  }
+  return null;
+}
+
 async function processTelegramUpdates() {
   try {
     const url = `${TELEGRAM_API}/getUpdates?offset=${telegramOffset}&limit=20`;
@@ -101,11 +110,27 @@ async function processTelegramUpdates() {
       const firstName = msg.from?.first_name || "";
       const username = msg.from?.username || "";
 
+      // Forward replies from contacts to owner
+      const owner = contacts["owner"];
+      const contactName = findContactNameByChatId(chatId);
+
+      if (
+        owner &&
+        contactName &&
+        contactName !== "خودم" &&
+        !text.startsWith("/start")
+      ) {
+        await sendTelegramMessage(
+          owner.chat_id,
+          `پاسخ از ${contactName}:\n${text}`
+        );
+      }
+
       if (text.startsWith("/start")) {
         const parts = text.split(" ");
         const payload = parts[1] || "";
 
-        // Register owner automatically when user just sends /start
+        // Register owner automatically
         if (!payload) {
           contacts["owner"] = {
             display_name: "خودم",
@@ -174,7 +199,7 @@ function saveMemory() {
   fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
 }
 
-// ===== Helper functions =====
+// ===== Helpers =====
 function findContactByDisplayName(targetName) {
   const normalizedTarget = normalizeName(targetName);
 
@@ -273,7 +298,7 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    // Create invite link for a contact and send it to owner on Telegram
+    // Create invite link and send it to owner
     if (text.startsWith("لینک اضافه کردن")) {
       const name = text.replace("لینک اضافه کردن", "").trim();
 
@@ -327,7 +352,7 @@ app.post("/chat", async (req, res) => {
       return res.send(`پیام برای ${found.savedName} فرستاده شد.`);
     }
 
-    // Normal conversation memory
+    // Normal memory-based conversation
     if (!memoryStore[deviceId]) {
       memoryStore[deviceId] = { history: [] };
     }
