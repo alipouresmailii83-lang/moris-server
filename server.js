@@ -49,8 +49,23 @@ function savePendingLinks() {
   fs.writeFileSync(PENDING_LINKS_FILE, JSON.stringify(pendingLinks, null, 2));
 }
 
+async function safeFetch(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sendTelegramMessage(chatId, text) {
-  const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+  const response = await safeFetch(`${TELEGRAM_API}/sendMessage`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -59,7 +74,7 @@ async function sendTelegramMessage(chatId, text) {
       chat_id: chatId,
       text: text,
     }),
-  });
+  }, 10000);
 
   return await response.json();
 }
@@ -94,10 +109,29 @@ function findContactNameByChatId(chatId) {
 async function processTelegramUpdates() {
   try {
     const url = `${TELEGRAM_API}/getUpdates?offset=${telegramOffset}&limit=20`;
-    const response = await fetch(url);
-    const data = await response.json();
 
-    if (!data.ok || !Array.isArray(data.result)) return;
+    let response;
+    try {
+      response = await safeFetch(url, {}, 10000);
+    } catch (err) {
+      console.log("Telegram polling skipped:", err.message);
+      return;
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (err) {
+      console.log("Telegram polling invalid JSON");
+      return;
+    }
+
+    if (!data.ok) {
+      console.log("Telegram API not ok");
+      return;
+    }
+
+    if (!Array.isArray(data.result)) return;
 
     for (const update of data.result) {
       telegramOffset = update.update_id + 1;
@@ -120,10 +154,14 @@ async function processTelegramUpdates() {
         contactName !== "خودم" &&
         !text.startsWith("/start")
       ) {
-        await sendTelegramMessage(
-          owner.chat_id,
-          `پاسخ از ${contactName}:\n${text}`
-        );
+        try {
+          await sendTelegramMessage(
+            owner.chat_id,
+            `پاسخ از ${contactName}:\n${text}`
+          );
+        } catch (err) {
+          console.log("Forward reply failed:", err.message);
+        }
       }
 
       if (text.startsWith("/start")) {
@@ -141,10 +179,14 @@ async function processTelegramUpdates() {
 
           saveContacts();
 
-          await sendTelegramMessage(
-            chatId,
-            "به عنوان صاحب دستگاه ثبت شدی ✅"
-          );
+          try {
+            await sendTelegramMessage(
+              chatId,
+              "به عنوان صاحب دستگاه ثبت شدی ✅"
+            );
+          } catch (err) {
+            console.log("Owner confirmation failed:", err.message);
+          }
 
           continue;
         }
@@ -167,20 +209,24 @@ async function processTelegramUpdates() {
             saveContacts();
             savePendingLinks();
 
-            await sendTelegramMessage(
-              chatId,
-              `ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم "${pending.display_name}" بهت پیام بده.`
-            );
+            try {
+              await sendTelegramMessage(
+                chatId,
+                `ثبت شد ✅\nاز این به بعد Moris می‌تونه با اسم "${pending.display_name}" بهت پیام بده.`
+              );
+            } catch (err) {
+              console.log("Contact confirmation failed:", err.message);
+            }
           }
         }
       }
     }
   } catch (err) {
-    console.error("Telegram polling error:", err.message);
+    console.log("Telegram polling error:", err.message);
   }
 }
 
-setInterval(processTelegramUpdates, 3000);
+setInterval(processTelegramUpdates, 5000);
 
 // ===== Memory =====
 let memoryStore = {};
@@ -399,7 +445,8 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
       input: messages,
     });
 
-    const reply = response.output_text?.trim() || "متوجه نشدم، دوباره بگو 👌";
+    const reply =
+      response.output_text?.trim() || "متوجه نشدم، دوباره بگو 👌";
 
     history.push({ role: "assistant", content: reply });
     memoryStore[deviceId].history = history;
