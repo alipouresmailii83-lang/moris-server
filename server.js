@@ -399,7 +399,7 @@ Make the interaction feel like talking to a real intelligent assistant, not a ma
       input: messages,
     });
 
-    const reply = response.output_text || "";
+    const reply = response.output_text?.trim() || "متوجه نشدم، دوباره بگو 👌";
 
     history.push({ role: "assistant", content: reply });
     memoryStore[deviceId].history = history;
