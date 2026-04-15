@@ -12,52 +12,138 @@ const openai = new OpenAI({
 
 app.use(express.json());
 
+// ===== Memory =====
+let memoryStore = {};
+const MAX_HISTORY = 8;
+const MEMORY_FILE = "memory.json";
+
+if (fs.existsSync(MEMORY_FILE)) {
+  try {
+    memoryStore = JSON.parse(fs.readFileSync(MEMORY_FILE, "utf8"));
+  } catch (e) {
+    memoryStore = {};
+  }
+}
+
+function saveMemory() {
+  fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
+}
+
 // ===== STT =====
 app.post("/stt", upload.single("audio"), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ text: "", error: "No audio file" });
+    }
+
     const filePath = req.file.path;
+    const debugPath = `uploads/debug-${Date.now()}.wav`;
+
+    fs.copyFileSync(filePath, debugPath);
 
     const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(filePath),
+      file: fs.createReadStream(debugPath),
       model: "gpt-4o-mini-transcribe",
     });
 
     fs.unlinkSync(filePath);
 
-    res.json({ text: transcription.text });
-  } catch (e) {
-    console.log(e);
-    res.status(500).json({ text: "" });
+    res.json({ text: transcription.text || "" });
+  } catch (err) {
+    console.error("STT ERROR:", err);
+    res.status(500).json({ text: "", error: "STT error" });
   }
 });
 
 // ===== CHAT =====
 app.post("/chat", async (req, res) => {
   try {
-    const text = req.body.text;
+    const text = req.body?.text || "";
+    const deviceId = req.body?.device_id || "default";
+
+    if (!text) {
+      return res.status(400).send("Missing text");
+    }
+
+    if (!memoryStore[deviceId]) {
+      memoryStore[deviceId] = { history: [] };
+    }
+
+    let history = memoryStore[deviceId].history;
+
+    history.push({
+      role: "user",
+      content: text,
+    });
+
+    if (history.length > MAX_HISTORY) {
+      history = history.slice(-MAX_HISTORY);
+    }
+
+    const messages = [
+      {
+        role: "system",
+        content: `
+You are Moris, a premium AI voice assistant.
+
+Personality:
+- Calm
+- Friendly
+- Natural
+- Not robotic
+
+Style:
+- Keep responses concise but useful
+- Speak naturally
+- Do not over-explain
+- Maintain context across the conversation
+`,
+      },
+      ...history,
+    ];
 
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: text,
+      input: messages,
     });
 
-    res.send(response.output_text);
-  } catch (e) {
-    console.log(e);
-    res.status(500).send("");
+    const reply =
+      response.output_text?.trim() || "متوجه نشدم، دوباره بگو 👌";
+
+    history.push({
+      role: "assistant",
+      content: reply,
+    });
+
+    if (history.length > MAX_HISTORY) {
+      history = history.slice(-MAX_HISTORY);
+    }
+
+    memoryStore[deviceId].history = history;
+    saveMemory();
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(reply);
+  } catch (err) {
+    console.error("CHAT ERROR:", err);
+    res.status(500).send("Chat error");
   }
 });
 
 // ===== TTS =====
 app.post("/tts", async (req, res) => {
   try {
-    const text = req.body.text;
+    const text = req.body?.text || "";
+
+    if (!text) {
+      return res.status(400).send("Missing text");
+    }
 
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
-      response_format: "pcm"
+      response_format: "pcm",
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
@@ -65,12 +151,14 @@ app.post("/tts", async (req, res) => {
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", buffer.length.toString());
     res.send(buffer);
-  } catch (e) {
-    console.log("TTS ERROR:", e);
-    res.status(500).send("");
+  } catch (err) {
+    console.error("TTS ERROR:", err);
+    res.status(500).send("TTS error");
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
 });
