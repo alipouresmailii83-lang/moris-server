@@ -57,7 +57,7 @@ app.post("/tts", async (req, res) => {
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
-      response_format: "wav" // 🔥 مهم
+      response_format: "wav"
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
@@ -65,7 +65,7 @@ app.post("/tts", async (req, res) => {
     res.setHeader("Content-Type", "audio/wav");
     res.send(buffer);
   } catch (e) {
-    console.log(e);
+    console.log("TTS ERROR:", e);
     res.status(500).send("");
   }
 });
