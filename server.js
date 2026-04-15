@@ -6,174 +6,70 @@ const OpenAI = require("openai");
 const app = express();
 const upload = multer({ dest: "uploads/" });
 
-const MEMORY_FILE = "memory.json";
-
-// لود حافظه
-if (fs.existsSync(MEMORY_FILE)) {
-  memoryStore = JSON.parse(fs.readFileSync(MEMORY_FILE));
-}
-
-// ذخیره حافظه
-function saveMemory() {
-  fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
-}
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 app.use(express.json());
 
-// حافظه مکالمه
-let memoryStore = {};
-
-
-// تعداد پیام‌هایی که نگه می‌داریم
-const MAX_HISTORY = 10;
-
-// ===================== STT =====================
+// ===== STT =====
 app.post("/stt", upload.single("audio"), async (req, res) => {
   try {
     const filePath = req.file.path;
-    const debugPath = `uploads/debug-${Date.now()}.wav`;
-
-    fs.copyFileSync(filePath, debugPath);
 
     const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(debugPath),
+      file: fs.createReadStream(filePath),
       model: "gpt-4o-mini-transcribe",
     });
 
     fs.unlinkSync(filePath);
 
-    res.json({ text: transcription.text || "" });
-  } catch (err) {
-    console.error(err);
-    let msg = "STT error";
-    if (err && err.error && err.error.message) msg = err.error.message;
-    else if (err && err.message) msg = err.message;
-
-    res.status(500).json({ text: "", error: msg });
+    res.json({ text: transcription.text });
+  } catch (e) {
+    console.log(e);
+    res.status(500).json({ text: "" });
   }
 });
 
-// ===================== CHAT WITH MEMORY =====================
+// ===== CHAT =====
 app.post("/chat", async (req, res) => {
   try {
-    const text = req.body?.text || "";
-    const deviceId = req.body?.device_id || "default";
-
-    if (!text) {
-      return res.status(400).send("Missing text");
-    }
-
-    if (!memoryStore[deviceId]) {
-      memoryStore[deviceId] = [];
-    }
-
-    let conversationHistory = memoryStore[deviceId];
-
-    conversationHistory.push({
-      role: "user",
-      content: text,
-    });
-
-    if (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
-    }
-
-    const messages = [
-      {
-        role: "system",
-        content: `
-You are Moris, a premium AI voice assistant.
-
-Personality:
-- Calm, confident, and slightly charismatic
-- Friendly but not overly casual
-- Speaks naturally like a human, not robotic
-- Keeps responses short and clear
-
-Behavior:
-- Always remember conversation context
-- Sometimes ask follow-up questions to continue the conversation
-- If the user answers your question, connect it to your previous message
-- Show interest in the user
-
-Style:
-- Speak smoothly and naturally
-- Avoid long explanations
-- Keep a premium, modern tone
-
-Goal:
-Make the interaction feel like talking to a real intelligent assistant, not a machine.
-`
-      },
-      ...conversationHistory
-    ];
+    const text = req.body.text;
 
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: messages,
+      input: text,
     });
 
-    const reply = response.output_text || "";
-
-    conversationHistory.push({
-      role: "assistant",
-      content: reply,
-    });
-
-    if (conversationHistory.length > MAX_HISTORY) {
-      conversationHistory = conversationHistory.slice(-MAX_HISTORY);
-    }
-
-    memoryStore[deviceId] = conversationHistory;
-    saveMemory();
-
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(reply);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Chat error");
+    res.send(response.output_text);
+  } catch (e) {
+    console.log(e);
+    res.status(500).send("");
   }
 });
 
-// ===================== TTS =====================
+// ===== TTS =====
 app.post("/tts", async (req, res) => {
   try {
-    const text = req.body?.text || "";
-
-    if (!text) {
-      return res.status(400).send("Missing text");
-    }
+    const text = req.body.text;
 
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
-      response_format: "pcm",
+      response_format: "pcm"
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
 
     res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Length", buffer.length.toString());
     res.send(buffer);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("TTS error");
+  } catch (e) {
+    console.log(e);
+    res.status(500).send("");
   }
 });
 
-// ===================== OPTIONAL RESET MEMORY =====================
-app.post("/reset-memory", (req, res) => {
-  conversationHistory = [];
-  res.json({ ok: true });
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+app.listen(3000, () => {
+  console.log("Server running on port 3000");
 });
