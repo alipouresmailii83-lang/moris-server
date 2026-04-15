@@ -57,12 +57,13 @@ app.post("/tts", async (req, res) => {
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
-      response_format: "wav"
+      response_format: "pcm"
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
 
-    res.setHeader("Content-Type", "audio/wav");
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", buffer.length.toString());
     res.send(buffer);
   } catch (e) {
     console.log("TTS ERROR:", e);
