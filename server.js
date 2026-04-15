@@ -143,7 +143,7 @@ app.post("/tts", async (req, res) => {
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
-      response_format: "pcm",
+      response_format: "pcm"
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
@@ -151,9 +151,9 @@ app.post("/tts", async (req, res) => {
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", buffer.length.toString());
     res.send(buffer);
-  } catch (err) {
-    console.error("TTS ERROR:", err);
-    res.status(500).send("TTS error");
+  } catch (e) {
+    console.log("TTS ERROR:", e);
+    res.status(500).send("");
   }
 });
 
