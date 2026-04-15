@@ -57,12 +57,12 @@ app.post("/tts", async (req, res) => {
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
-      response_format: "pcm"
+      response_format: "wav" // 🔥 مهم
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
 
-    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Type", "audio/wav");
     res.send(buffer);
   } catch (e) {
     console.log(e);
