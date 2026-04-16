@@ -167,7 +167,7 @@ app.post("/tts", async (req, res) => {
       voice: "cedar",
       input: text,
       response_format: "pcm",
-      speed: 0.85
+      speed: 0.95
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
