@@ -44,7 +44,7 @@ app.post(
         return res.status(400).json({ text: "", error: "No audio body" });
       }
 
-      const tempPath = uploads/stt-${Date.now()}.wav;
+      const tempPath = `uploads/stt-${Date.now()}.wav`;
       fs.writeFileSync(tempPath, req.body);
 
       const transcription = await openai.audio.transcriptions.create({
