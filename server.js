@@ -37,12 +37,9 @@ app.post("/stt", upload.single("audio"), async (req, res) => {
     }
 
     const filePath = req.file.path;
-    const debugPath = `uploads/debug-${Date.now()}.wav`;
-
-    fs.copyFileSync(filePath, debugPath);
 
     const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(debugPath),
+      file: fs.createReadStream(filePath),
       model: "gpt-4o-mini-transcribe",
     });
 
@@ -85,18 +82,8 @@ app.post("/chat", async (req, res) => {
         role: "system",
         content: `
 You are Moris, a premium AI voice assistant.
-
-Personality:
-- Calm
-- Friendly
-- Natural
-- Not robotic
-
-Style:
-- Keep responses concise but useful
-- Speak naturally
-- Do not over-explain
-- Maintain context across the conversation
+Be natural, calm, and concise.
+Maintain context across the conversation.
 `,
       },
       ...history,
@@ -146,19 +133,23 @@ app.post("/tts", async (req, res) => {
       response_format: "pcm"
     });
 
-    const buffer = Buffer.from(await speech.arrayBuffer());
+    const arrayBuffer = await speech.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
+    console.log("TTS BYTES:", buffer.length);
+
+    res.status(200);
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", buffer.length.toString());
-    res.send(buffer);
-  } catch (e) {
-    console.log("TTS ERROR:", e);
+    res.setHeader("Cache-Control", "no-store");
+    res.end(buffer);
+  } catch (err) {
+    console.error("TTS ERROR:", err);
     res.status(500).send("");
   }
 });
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
