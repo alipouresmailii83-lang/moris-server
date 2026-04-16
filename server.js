@@ -163,8 +163,8 @@ app.post("/tts", async (req, res) => {
     }
 
     const speech = await openai.audio.speech.create({
-      model: "gpt-4o-mini-tts",
-      voice: "cedar",
+      model: "tts-1-hd",
+      voice: "nova",
       input: text,
       response_format: "pcm",
       speed: 0.95
