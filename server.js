@@ -35,32 +35,34 @@ app.get("/", (req, res) => {
 });
 
 // ===== STT =====
-app.post("/stt", upload.single("audio"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ text: "", error: "No audio file" });
+app.post(
+  "/stt",
+  express.raw({ type: "audio/wav", limit: "4mb" }),
+  async (req, res) => {
+    try {
+      if (!req.body || !req.body.length) {
+        return res.status(400).json({ text: "", error: "No audio body" });
+      }
+
+      const tempPath = uploads/stt-${Date.now()}.wav;
+      fs.writeFileSync(tempPath, req.body);
+
+      const transcription = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(tempPath),
+        model: "gpt-4o-mini-transcribe",
+      });
+
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {}
+
+      res.json({ text: transcription.text || "" });
+    } catch (err) {
+      console.error("STT ERROR:", err);
+      res.status(500).json({ text: "", error: "STT error" });
     }
-
-    const filePath = req.file.path;
-
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(filePath),
-      model: "gpt-4o-mini-transcribe",
-    });
-
-    try {
-      fs.unlinkSync(filePath);
-    } catch {}
-
-    res.json({ text: transcription.text || "" });
-  } catch (err) {
-    console.error("STT ERROR:", err);
-    try {
-      if (req.file?.path) fs.unlinkSync(req.file.path);
-    } catch {}
-    res.status(500).json({ text: "", error: "STT error" });
   }
-});
+);
 
 // ===== CHAT =====
 app.post("/chat", async (req, res) => {
