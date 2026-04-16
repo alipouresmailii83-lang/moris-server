@@ -21,10 +21,9 @@ app.post(
       fs.writeFileSync(tempPath, req.body);
 
       const transcription = await openai.audio.transcriptions.create({
-  file: fs.createReadStream(tempPath),
-  model: "gpt-4o-mini-transcribe",
-  language: "fa",   // 👈 مهم
-});
+        file: fs.createReadStream(tempPath),
+        model: "gpt-4o-mini-transcribe",
+        language: "fa"
       });
 
       try {
@@ -33,6 +32,7 @@ app.post(
 
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.send(transcription.text || "");
+
     } catch (err) {
       console.error("STT ERROR:", err);
       res.status(500).send("STT_SERVER_ERROR");
