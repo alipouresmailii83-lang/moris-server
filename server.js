@@ -51,16 +51,64 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    const response = await openai.responses.create({
-      model: "gpt-4.1-mini",
-      input: text,
+    if (!memoryStore[deviceId]) {
+      memoryStore[deviceId] = { history: [] };
+    }
+
+    let history = memoryStore[deviceId].history;
+
+    history.push({
+      role: "user",
+      content: text,
     });
 
+    if (history.length > 10) {
+      history = history.slice(-10);
+    }
+
+    const messages = [
+      {
+        role: "system",
+        content: `
+You are Moris, a premium AI voice assistant.
+
+IMPORTANT RULES:
+- Always reply in Persian.
+- Never reply in English unless the user explicitly asks for English.
+- Do not use Finglish.
+- Use natural spoken Persian.
+- Keep answers short, clear, and friendly.
+- Remember the previous conversation context.
+`,
+      },
+      ...history,
+    ];
+
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: messages,
+    });
+
+    const reply =
+      response.output_text?.trim() || "متوجه نشدم، دوباره بگو.";
+
+    history.push({
+      role: "assistant",
+      content: reply,
+    });
+
+    if (history.length > 10) {
+      history = history.slice(-10);
+    }
+
+    memoryStore[deviceId].history = history;
+    saveMemory();
+
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(response.output_text?.trim() || "متوجه نشدم");
+    res.send(reply);
   } catch (err) {
     console.error("CHAT ERROR:", err);
-    res.status(500).send("");
+    res.status(500).send("Chat error");
   }
 });
 
