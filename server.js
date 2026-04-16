@@ -24,16 +24,12 @@ app.post("/tts", async (req, res) => {
       response_format: "pcm"
     });
 
-    const arrayBuffer = await speech.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = Buffer.from(await speech.arrayBuffer());
 
-    console.log("TTS BYTES:", buffer.length);
-
-    res.status(200);
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", buffer.length.toString());
     res.setHeader("Cache-Control", "no-store");
-    res.end(buffer);
+    res.send(buffer);
   } catch (err) {
     console.error("TTS ERROR:", err);
     res.status(500).send("");
