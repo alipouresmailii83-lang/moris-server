@@ -117,22 +117,25 @@ app.post("/tts", async (req, res) => {
     const text = req.body?.text || "";
 
     if (!text) {
-      return res.status(400).send("");
+      return res.status(400).send("Missing text");
     }
+
+    const cleanText = String(text).replace(/[A-Za-z]/g, "");
 
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "cedar",
-      input: text,
+      input: cleanText,
       response_format: "pcm",
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
 
+    res.status(200);
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", buffer.length.toString());
     res.setHeader("Cache-Control", "no-store");
-    res.send(buffer);
+    res.end(buffer);
   } catch (err) {
     console.error("TTS ERROR:", err);
     res.status(500).send("");
