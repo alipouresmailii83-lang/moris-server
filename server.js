@@ -21,8 +21,10 @@ app.post(
       fs.writeFileSync(tempPath, req.body);
 
       const transcription = await openai.audio.transcriptions.create({
-        file: fs.createReadStream(tempPath),
-        model: "gpt-4o-mini-transcribe",
+  file: fs.createReadStream(tempPath),
+  model: "gpt-4o-mini-transcribe",
+  language: "fa",   // 👈 مهم
+});
       });
 
       try {
