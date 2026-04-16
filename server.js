@@ -8,31 +8,35 @@ const openai = new OpenAI({
 });
 
 // مهم: اول raw route بیاد
-app.post("/stt", express.raw({ type: "audio/wav", limit: "6mb" }), async (req, res) => {
-  try {
-    if (!req.body || !req.body.length) {
-      return res.status(400).send("");
-    }
-
-    const tempPath = `/tmp/stt-${Date.now()}.wav`;
-    fs.writeFileSync(tempPath, req.body);
-
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tempPath),
-      model: "gpt-4o-mini-transcribe",
-    });
-
+app.post(
+  "/stt",
+  express.raw({ type: "audio/wav", limit: "6mb" }),
+  async (req, res) => {
     try {
-      fs.unlinkSync(tempPath);
-    } catch {}
+      if (!req.body || !req.body.length) {
+        return res.status(400).send("");
+      }
 
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(transcription.text || "");
-  } catch (err) {
-    console.error("STT ERROR:", err);
-    res.status(500).send("");
+      const tempPath = `/tmp/stt-${Date.now()}.wav`;
+      fs.writeFileSync(tempPath, req.body);
+
+      const transcription = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(tempPath),
+        model: "gpt-4o-mini-transcribe",
+      });
+
+      try {
+        fs.unlinkSync(tempPath);
+      } catch {}
+
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.send(transcription.text || "");
+    } catch (err) {
+      console.error("STT ERROR:", err);
+      res.status(500).send("STT_SERVER_ERROR");
+    }
   }
-});
+);
 
 app.use(express.json({ limit: "2mb" }));
 
