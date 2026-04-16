@@ -156,19 +156,18 @@ app.post("/chat", async (req, res) => {
 // -------------------- TTS --------------------
 app.post("/tts", async (req, res) => {
   try {
-    const rawText = String(req.body?.text || "").trim();
+    const text = req.body?.text || "";
 
-    if (!rawText) {
+    if (!text) {
       return res.status(400).send("");
     }
-
-    const text = normalizeForTTS(rawText);
 
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "cedar",
       input: text,
       response_format: "pcm",
+      speed: 0.85
     });
 
     const buffer = Buffer.from(await speech.arrayBuffer());
