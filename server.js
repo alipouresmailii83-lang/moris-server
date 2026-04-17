@@ -93,6 +93,24 @@ app.get("/", (req, res) => {
 });
 
 // -------------------- Chat --------------------
+function extractUserInfo(text) {
+  const t = String(text || "").trim();
+
+  // Persian: "اسمم علی هست" / "اسم من علی است"
+  let m = t.match(/اسمم\s+(.+?)(?:\s+هست|\s+است|$)/);
+  if (m) return { name: m[1].trim() };
+
+  m = t.match(/اسم\s+من\s+(.+?)(?:\s+هست|\s+است|$)/);
+  if (m) return { name: m[1].trim() };
+
+  // English: "my name is Ali"
+  m = t.match(/my name is\s+(.+)$/i);
+  if (m) return { name: m[1].trim() };
+
+  return null;
+}
+
+
 app.post("/chat", async (req, res) => {
   try {
     const text = String(req.body?.text || "").trim();
@@ -102,28 +120,55 @@ app.post("/chat", async (req, res) => {
       return res.status(400).send("Missing text");
     }
 
-    const deviceMemory = getDeviceMemory(deviceId);
-    let history = Array.isArray(deviceMemory.history) ? deviceMemory.history : [];
+    if (!memoryStore[deviceId]) {
+      memoryStore[deviceId] = {
+        history: [],
+        profile: {}
+      };
+    }
 
+    let history = Array.isArray(memoryStore[deviceId].history)
+      ? memoryStore[deviceId].history
+      : [];
+
+    let profile = memoryStore[deviceId].profile || {};
+
+    // ===== Save long-term user info (like name) =====
+    const info = extractUserInfo(text);
+    if (info) {
+      profile = { ...profile, ...info };
+      memoryStore[deviceId].profile = profile;
+    }
+
+    // ===== Add user message to history =====
     history.push({
       role: "user",
       content: text,
     });
 
-    history = trimHistory(history, MAX_HISTORY);
+    // Keep last 12 messages
+    if (history.length > 12) {
+      history = history.slice(-12);
+    }
+
+    // ===== Build system prompt =====
+    const systemPrompt =
+      "You are Moris, a premium AI voice assistant. " +
+      "Always reply in the same language as the user's latest message. " +
+      "If the user speaks Persian, reply in natural Persian. " +
+      "If the user speaks English, reply in natural English. " +
+      "Do not randomly switch languages. " +
+      "Be friendly, natural, and conversational. " +
+      "Continue the conversation naturally instead of giving dry answers. " +
+      "Sometimes ask a short follow-up question when appropriate. " +
+      "Keep replies short, clear, and easy to speak aloud. " +
+      "Do not sound robotic. " +
+      (profile.name ? `The user's name is ${profile.name}. Use it naturally sometimes. ` : "");
 
     const input = [
       {
         role: "system",
-        content:
-          "You are Moris, a premium AI voice assistant. " +
-          "Always reply in the same language as the user's latest message. " +
-          "If the user speaks Persian, reply in natural Persian. " +
-          "If the user speaks English, reply in natural English. " +
-          "Do not randomly switch languages. " +
-          "Keep replies short, clear, friendly, and easy to speak aloud. " +
-          "Use natural punctuation so the voice sounds calm and well-paced. " +
-          "Remember the recent conversation context.",
+        content: systemPrompt,
       },
       ...history,
     ];
@@ -137,13 +182,18 @@ app.post("/chat", async (req, res) => {
       response.output_text || "متوجه نشدم، دوباره بگو."
     ).trim();
 
+    // ===== Save assistant reply to history =====
     history.push({
       role: "assistant",
       content: reply,
     });
 
-    history = trimHistory(history, MAX_HISTORY);
-    deviceMemory.history = history;
+    if (history.length > 12) {
+      history = history.slice(-12);
+    }
+
+    memoryStore[deviceId].history = history;
+    memoryStore[deviceId].profile = profile;
     saveMemory();
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
