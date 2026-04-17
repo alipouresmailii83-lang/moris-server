@@ -66,8 +66,9 @@ app.post(
 
       const transcription = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempPath),
-        model: "gpt-4o-mini-transcribe",
+        model: "gpt-4o-transcribe",
         language: "fa",
+        prompt: "این یک گفت‌وگوی فارسی محاوره‌ای است. نام دستیار موریس است. متن را دقیق و بدون حدس اضافه بنویس."
       });
 
       try {
