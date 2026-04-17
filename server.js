@@ -65,11 +65,11 @@ app.post(
       fs.writeFileSync(tempPath, req.body);
 
       const transcription = await openai.audio.transcriptions.create({
-        file: fs.createReadStream(tempPath),
-        model: "gpt-4o-transcribe",
-        language: "fa",
-        prompt: "این یک گفت‌وگوی فارسی محاوره‌ای است. نام دستیار موریس است. متن را دقیق و بدون حدس اضافه بنویس."
-      });
+  file: fs.createReadStream(tempPath),
+  model: "gpt-4o-transcribe",
+  language: "fa",
+  prompt: "این یک گفت‌وگوی فارسی محاوره‌ای است. نام دستیار موریس است. متن را دقیق و بدون حدس اضافه بنویس."
+});
 
       try {
         fs.unlinkSync(tempPath);
@@ -153,17 +153,21 @@ app.post("/chat", async (req, res) => {
 
     // ===== Build system prompt =====
     const systemPrompt =
-      "You are Moris, a premium AI voice assistant. " +
-      "Always reply in the same language as the user's latest message. " +
-      "If the user speaks Persian, reply in natural Persian. " +
-      "If the user speaks English, reply in natural English. " +
-      "Do not randomly switch languages. " +
-      "Be friendly, natural, and conversational. " +
-      "Continue the conversation naturally instead of giving dry answers. " +
-      "Sometimes ask a short follow-up question when appropriate. " +
-      "Keep replies short, clear, and easy to speak aloud. " +
-      "Do not sound robotic. " +
-      (profile.name ? `The user's name is ${profile.name}. Use it naturally sometimes. ` : "");
+  "You are Moris, a premium AI voice assistant. " +
+  "Always reply in the same language as the user's latest message. " +
+  "If the user speaks Persian, reply in natural Persian. " +
+  "If the user speaks English, reply in natural English. " +
+  "Do not randomly switch languages. " +
+  "Be friendly, natural, and conversational. " +
+  "Continue the conversation naturally instead of giving dry answers. " +
+  "Sometimes ask a short follow-up question when appropriate. " +
+  "Keep replies short, clear, and easy to speak aloud. " +
+  "Do not sound robotic. " +
+  "Very important: if the user's message seems unclear, ambiguous, or strange, do not assume or hallucinate. " +
+  "Instead, politely ask the user to repeat or clarify. " +
+  "Do not turn unclear words into a different topic. " +
+  "If the message transcription looks wrong, say that you may have heard it incorrectly. " +
+  (profile.name ? `The user's name is ${profile.name}. Use it naturally sometimes. ` : "");
 
     const input = [
       {
