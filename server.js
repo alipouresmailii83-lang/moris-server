@@ -64,11 +64,10 @@ app.post(
       const tempPath = `/tmp/stt-${Date.now()}.wav`;
       fs.writeFileSync(tempPath, req.body);
 
-      const transcription = await openai.audio.transcriptions.create({
+     const transcription = await openai.audio.transcriptions.create({
   file: fs.createReadStream(tempPath),
   model: "gpt-4o-transcribe",
-  language: "fa",
-  prompt: "این یک گفت‌وگوی فارسی محاوره‌ای است. نام دستیار موریس است. متن را دقیق و بدون حدس اضافه بنویس."
+  prompt: "این یک گفت‌وگوی محاوره‌ای فارسی است که ممکن است شامل اسم افراد، برندها، محصولات و کلمات انگلیسی رایج هم باشد. کلمات فارسی و انگلیسی را همان‌طور که گفته می‌شوند دقیق بنویس. اگر کاربر اسم‌هایی مثل Trump, iPhone, Apple, Samsung, ChatGPT, Moris, Pro, Air, Max گفت، آن‌ها را به کلمه بی‌ربط تبدیل نکن. متن را دقیق و بدون حدس اضافه بنویس."
 });
 
       try {
