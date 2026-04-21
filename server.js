@@ -67,7 +67,7 @@ app.post(
       const transcription = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempPath),
         model: "gpt-4o-transcribe",
-        prompt: "این یک گفت‌وگوی محاوره‌ای فارسی است که ممکن است شامل اسم افراد، برندها، محصولات و کلمات انگلیسی رایج هم باشد.."
+        prompt: "این یک گفت‌وگوی محاوره‌ای فارسی است که ممکن است شامل اسم افراد، برندها، محصولات و کلمات انگلیسی رایج هم باشد. متن را دقیق و بدون حدس اضافه بنویس."
       });
 
       try {
