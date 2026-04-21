@@ -88,14 +88,17 @@ app.post(
         return res.status(400).send("");
       }
 
-      const tempPath = `/tmp/stt-${Date.now()}.wav`;
+      const ts = Date.now();
+      const tempPath = `/tmp/stt-${ts}.wav`;
+      const debugPath = `/tmp/stt-last.wav`;
+
       fs.writeFileSync(tempPath, req.body);
+      fs.writeFileSync(debugPath, req.body);
 
       const transcription = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempPath),
-        model: "gpt-4o-mini-transcribe-2025-12-15",
-        prompt:
-          "This is casual Persian conversation. The user may mention technology, politics, product names, brands, people, and mixed Persian-English terms. Expect words like Trump, iPhone, Apple, Samsung, Air, Pro, Max, ChatGPT, Moris. Transcribe accurately. Do not invent unrelated words.",
+        model: "gpt-4o-transcribe",
+        prompt: "This is casual Persian speech and may include English product names and person names. Transcribe faithfully and do not invent unrelated words."
       });
 
       try {
@@ -110,6 +113,17 @@ app.post(
     }
   }
 );
+
+app.get("/debug/stt-last", (req, res) => {
+  const debugPath = `/tmp/stt-last.wav`;
+
+  if (!fs.existsSync(debugPath)) {
+    return res.status(404).send("No debug audio");
+  }
+
+  res.setHeader("Content-Type", "audio/wav");
+  fs.createReadStream(debugPath).pipe(res);
+});
 
 // برای chat و tts
 app.use(express.json({ limit: "2mb" }));
