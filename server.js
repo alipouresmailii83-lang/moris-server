@@ -50,6 +50,33 @@ function normalizeForTTS(text) {
     .trim();
 }
 
+async function fixTranscription(text) {
+  try {
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: [
+        {
+          role: "system",
+          content:
+            "You are correcting speech-to-text output. " +
+            "The text may contain errors. Fix it into a natural Persian sentence. " +
+            "Keep English names like Trump, iPhone, Apple unchanged. " +
+            "Do not change the meaning. Only fix mistakes."
+        },
+        {
+          role: "user",
+          content: text
+        }
+      ]
+    });
+
+    return response.output_text.trim();
+  } catch (e) {
+    return text;
+  }
+}
+
+
 // مهم:
 // route مربوط به STT باید قبل از express.json بیاد
 app.post(
@@ -75,7 +102,11 @@ app.post(
       } catch {}
 
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.send(transcription.text || "");
+      let rawText = transcription.text || "";
+
+const fixedText = await fixTranscription(rawText);
+
+res.send(fixedText);
     } catch (err) {
       console.error("STT ERROR:", err);
       res.status(500).send("STT_SERVER_ERROR");
