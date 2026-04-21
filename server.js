@@ -93,8 +93,9 @@ app.post(
 
       const transcription = await openai.audio.transcriptions.create({
         file: fs.createReadStream(tempPath),
-        model: "gpt-4o-transcribe",
-        prompt: "این یک گفت‌وگوی محاوره‌ای فارسی است که ممکن است شامل اسم افراد، برندها، محصولات و کلمات انگلیسی رایج هم باشد. متن را دقیق و بدون حدس اضافه بنویس."
+        model: "gpt-4o-mini-transcribe-2025-12-15",
+        prompt:
+          "This is casual Persian conversation. The user may mention technology, politics, product names, brands, people, and mixed Persian-English terms. Expect words like Trump, iPhone, Apple, Samsung, Air, Pro, Max, ChatGPT, Moris. Transcribe accurately. Do not invent unrelated words.",
       });
 
       try {
@@ -102,11 +103,7 @@ app.post(
       } catch {}
 
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      let rawText = transcription.text || "";
-
-const fixedText = await fixTranscription(rawText);
-
-res.send(fixedText);
+      res.send(transcription.text || "");
     } catch (err) {
       console.error("STT ERROR:", err);
       res.status(500).send("STT_SERVER_ERROR");
